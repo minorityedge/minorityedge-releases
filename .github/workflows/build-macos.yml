@@ -1,0 +1,107 @@
+name: Build macOS
+
+on:
+  repository_dispatch:
+    types: [build-macos]
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: 'Source repository'
+        required: true
+        default: 'minorityedge/crypto_web'
+      ref:
+        description: 'Branch or commit'
+        required: true
+        default: 'main'
+      channel:
+        description: 'Release channel'
+        required: true
+        default: 'latest'
+        type: choice
+        options:
+          - latest
+          - dev
+
+jobs:
+  build-and-publish:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.client_payload.repo || github.event.inputs.source_repo }}
+          ref: ${{ github.event.client_payload.ref || github.event.inputs.ref }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set release channel
+        id: channel
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "channel=${{ github.event.inputs.channel }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "channel=${{ github.event.client_payload.channel }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.client_payload.ref || github.event.inputs.ref }}" = "refs/heads/main" ]; then
+            echo "channel=latest" >> $GITHUB_OUTPUT
+          else
+            echo "channel=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version for dev channel
+        if: steps.channel.outputs.channel == 'dev'
+        run: npm version prerelease --preid=dev --no-git-tag-version
+
+      - name: Build Electron app
+        run: npm run build:electron
+        env:
+          UPDATE_CHANNEL: ${{ steps.channel.outputs.channel }}
+
+      - name: Create channel-specific update files
+        run: |
+          mkdir -p dist
+          if [ "${{ steps.channel.outputs.channel }}" = "dev" ]; then
+            if [ -f "dist/dev-mac.yml" ]; then
+              echo "Found existing dev-mac.yml"
+            else
+              echo "Creating dev-mac.yml manually"
+              cat > dist/dev-mac.yml << 'EOF'
+          provider: github
+          owner: minorityedge
+          repo: minorityedge-releases
+          updaterCacheDirName: minority-edge-updater
+          EOF
+            fi
+            echo "Created dev-mac.yml"
+            ls -la dist/*.yml
+          else
+            if [ -f "dist/latest-mac.yml" ]; then
+              echo "Found existing latest-mac.yml"
+            else
+              echo "Creating latest-mac.yml manually"
+              cat > dist/latest-mac.yml << 'EOF'
+          provider: github
+          owner: minorityedge
+          repo: minorityedge-releases
+          updaterCacheDirName: minority-edge-updater
+          EOF
+            fi
+            echo "Created latest-mac.yml"
+            ls -la dist/*.yml
+          fi
+
+      - name: Build and Publish macOS to Public Repository
+        run: npm run electron:publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_CHANNEL: ${{ steps.channel.outputs.channel }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
