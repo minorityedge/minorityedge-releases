@@ -65,41 +65,6 @@ jobs:
         env:
           UPDATE_CHANNEL: ${{ steps.channel.outputs.channel }}
 
-      - name: Create channel-specific update files
-        run: |
-          mkdir -p dist
-          if [ "${{ steps.channel.outputs.channel }}" = "dev" ]; then
-            if [ -f "dist/dev-mac.yml" ]; then
-              echo "Found existing dev-mac.yml"
-            else
-              echo "Creating dev-mac.yml manually"
-              cat > dist/dev-mac.yml << 'EOF'
-          provider: github
-          owner: minorityedge
-          repo: minorityedge-releases
-          updaterCacheDirName: minority-edge-updater
-          EOF
-            fi
-            echo "Created dev-mac.yml"
-            cp dist/dev-mac.yml dist/latest-mac.yml
-            echo "Copied dev-mac.yml to latest-mac.yml"
-            ls -la dist/*.yml
-          else
-            if [ -f "dist/latest-mac.yml" ]; then
-              echo "Found existing latest-mac.yml"
-            else
-              echo "Creating latest-mac.yml manually"
-              cat > dist/latest-mac.yml << 'EOF'
-          provider: github
-          owner: minorityedge
-          repo: minorityedge-releases
-          updaterCacheDirName: minority-edge-updater
-          EOF
-            fi
-            echo "Created latest-mac.yml"
-            ls -la dist/*.yml
-          fi
-
       - name: Build and Publish macOS to Public Repository
         run: npm run electron:publish
         env:
@@ -107,3 +72,23 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_CHANNEL: ${{ steps.channel.outputs.channel }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Get version for release tag
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Copy and upload latest-mac.yml for dev channel
+        if: steps.channel.outputs.channel == 'dev'
+        run: |
+          if [ -f "dist/dev-mac.yml" ]; then
+            cp dist/dev-mac.yml dist/latest-mac.yml
+            echo "Copied dev-mac.yml to latest-mac.yml"
+            
+            # Загружаем в уже созданный релиз
+            gh release upload "v${{ steps.version.outputs.version }}" dist/latest-mac.yml --clobber
+            echo "Uploaded latest-mac.yml to release"
+          else
+            echo "dev-mac.yml not found!"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
