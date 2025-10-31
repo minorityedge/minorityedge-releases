@@ -76,19 +76,5 @@ jobs:
       - name: Get version for release tag
         id: version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-
-      - name: Copy and upload latest-mac.yml for dev channel
-        if: steps.channel.outputs.channel == 'dev'
-        run: |
-          if [ -f "dist/dev-mac.yml" ]; then
-            cp dist/dev-mac.yml dist/latest-mac.yml
-            echo "Copied dev-mac.yml to latest-mac.yml"
-            
-            # Загружаем в уже созданный релиз
-            gh release upload "v${{ steps.version.outputs.version }}" dist/latest-mac.yml --clobber
-            echo "Uploaded latest-mac.yml to release"
-          else
-            echo "dev-mac.yml not found!"
-          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
