@@ -81,6 +81,8 @@ jobs:
           EOF
             fi
             echo "Created dev-mac.yml"
+            cp dist/dev-mac.yml dist/latest-mac.yml
+            echo "Copied dev-mac.yml to latest-mac.yml"
             ls -la dist/*.yml
           else
             if [ -f "dist/latest-mac.yml" ]; then
